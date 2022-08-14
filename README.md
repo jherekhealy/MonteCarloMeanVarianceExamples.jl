@@ -4,7 +4,7 @@ Julia code for the paper "[Accurate and consistent calculation of the mean and v
 ## How to
 1. Clone the repo
 2. launch julia in the newly created folder
-3. push ALT+] to enter the pkg env
+3. push ] to enter the pkg env
 4. type `activate .` such that julia is aware of the new module
 5. type `test` to launch the tests
 
