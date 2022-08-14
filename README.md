@@ -1,2 +1,30 @@
 # MonteCarloMeanVarianceExamples.jl
-Julia code for the paper "Accurate and consistent calculation of the mean and variance in Monte-Carlo simulations"
+Julia code for the paper "[Accurate and consistent calculation of the mean and variance in Monte-Carlo simulations](https://arxiv.org/abs/2206.10662)"
+
+## How to
+1. Clone the repo
+2. launch julia in the newly created folder
+3. push ALT+] to enter the pkg env
+4. type `activate .` such that julia is aware of the new module
+5. type `test` to launch the tests
+
+Sample output
+```
+Reference 99999.99994407306 1.0012459250239656
+Naive{Float64}(100000, 9.999999652071733e9, 9.999999305143059e14, 0.0, false) 6.868949853355843e-15 0.00015557866314112268
+ChanLewis{Float64}(100000, 9.999999652071733e9, 99999.99652071734, 99964.20428613496) 6.868949853355843e-15 6.011097697378176e-10
+Ling{Float64}(100000, 99999.99652071764, 99964.2042260204) 6.502576255229542e-15 6.361808801980118e-10
+Kahan{Naive{Float64}, Float64}(Naive{Float64}(100000, 9.999999652071703e9, 9.99999930514306e14, 0.0, false), -2.5631743483245373e-7, -0.057956695556640625) 5.10702591327572e-17 1.3225938902106104e-6
+Kahan{ChanLewis{Float64}, Float64}(ChanLewis{Float64}(100000, 9.999999652071703e9, 99999.99652071703, 99964.20425433476), -2.5631743483245373e-7, -1.55964130499342e-12) 5.10702591327572e-17 3.0712099530205705e-14
+Kahan{Ling{Float64}, Float64}(Ling{Float64}(100000, 99999.99652071703, 99964.20425434234), -4.716334541334834e-13, 3.8333780594257405e-12) 0.0 2.208566662886824e-14
+Klein{Naive{Float64}, Float64}(Naive{Float64}(100000, 9.999999652071703e9, 9.99999930514306e14, 0.0, false), 9.999999652071733e9, -3.0261260690167546e-5, 0.0, 9.999999305143059e14, 0.18295669555664062, 0.0) 5.10702591327572e-17 1.3225938902106104e-6
+Klein{Ling{Float64}, Float64}(Ling{Float64}(100000, 99999.99652071703, 99964.20425434234), 99999.99652071751, -4.797415692954249e-10, 0.0, 99964.20425434323, -8.914307556007195e-10, 0.0) 0.0 2.208566662886824e-14
+Kahan{Naive{Float64}, Float64}(Naive{Float64}(100000, 9.999999652071703e9, 2.138962864507637e6, 99995.48099343857, true), -2.5631743483245373e-7, 2.0172308268229244e-10) 5.10702591327572e-17 4.933280561836284e-11
+Klein{Naive{Float64}, Float64}(Naive{Float64}(100000, 9.999999652071703e9, 2.138962864507637e6, 99995.48099343857, true), 9.999999652071733e9, -3.0261260690167546e-5, 0.0, 2.138962864507661e6, -2.4416106400582116e-8, 0.0) 5.10702591327572e-17 4.933280561836284e-11
+Test Summary:           | Pass  Total
+NormalLingAverageSorted | 2000   2000
+```
+
+The test "NormalLingAverageSorted" corresponds to the "Sorted" column of Table 1 in the paper. The last two numbers are the average relative absolute error in mean and variance. What precedes is the detail of each structure tested (the members of each structure).
+
+It is of course also possible to call the various functions from the Julia REPL once the module is activated.
