@@ -3,6 +3,7 @@ export SimulationStatistics,
     Kahan,
     Ling,
     Klein,
+    Knuth,
     Naive,
     recordValue,
     lastMeasure,
@@ -65,6 +66,12 @@ mutable struct Kahan{T,U} <: StatisticsAlgorithm
 end
 
 
+mutable struct Knuth{T,U} <: StatisticsAlgorithm
+    parent::T
+    Astar::U
+    Qstar::U
+    Knuth{U}(parent::T) where {T,U} = new{T,U}(parent, zero(U), zero(U))
+end
 mutable struct Klein{T,U} <: StatisticsAlgorithm
     parent::T
     S::U
@@ -107,6 +114,10 @@ function updateStatistics(ss::Ling{U}, x) where {U}
     ss.A += (x - ss.A) / (ss.counter)
 end
 
+
+function Base.sum(ss::Ling{U}) where {U} 
+    return ss.A * ss.counter
+end
 
 function updateStatistics(s::Kahan{Ling{T},U}, x) where {U,T}
     ss = s.parent
@@ -172,14 +183,36 @@ function updateStatistics(s::Kahan{Naive{T},U}, x) where {U,T}
     s.Astar = (t - ss.A) - y
     ss.A = t
 end
+function updateStatistics(s::Knuth{Naive{T},U}, b0) where {U,T}
+    ss = s.parent
+    ss.counter += 1
+    setShiftFromFirstObservation(ss, b0)
+    b = (convert(U, b0) - ss.K)^2
+    x = ss.Q + b
+    z = x -ss.Q
+    tmp1 = x - z
+    tmp2 = ss.Q - tmp1
+    tmp1 = b - z
+    ss.Q = x
+    s.Qstar += tmp2 + tmp1
+   
+  
+    b = convert(U, b0)
+    x = ss.A + b
+    z = x - ss.A
+    tmp1 = x - z
+    tmp2 = ss.A - tmp1
+    tmp1 = b - z
+    ss.A = x
+    s.Astar += tmp2 + tmp1
+    # => ss.A+ss.Astar
+end
 
-
-#function updateStatistics(s::NaiveKlein{U}, x) where {U}
 function updateStatistics(s::Klein{Naive{T},U}, x) where {U,T}
     ss = s.parent
     ss.counter += 1
     setShiftFromFirstObservation(ss, x)
-    z = convert(U, x - ss.K)^2 #the raw square implies a loss of accuracy
+    z = (convert(U, x) - ss.K)^2 #the raw square implies a loss of accuracy
     t = s.S2 + z
     c = abs(s.S2) >= abs(z) ? (s.S2 - t) + z : (z - t) + s.S2
     s.S2 = t
@@ -189,7 +222,7 @@ function updateStatistics(s::Klein{Naive{T},U}, x) where {U,T}
     s.CCS2 += cc
     ss.Q = (s.S2 + s.CS2 + s.CCS2)
 
-    z = x
+    z = convert(U, x)
     t = s.S + z
     c = abs(s.S) >= abs(z) ? (s.S - t) + z : (z - t) + s.S
     s.S = t
@@ -198,6 +231,19 @@ function updateStatistics(s::Klein{Naive{T},U}, x) where {U,T}
     s.CS = t
     s.CCS += cc
     ss.A = (s.S + s.CS + s.CCS)
+end
+
+
+function Base.sum(ss::Knuth{Naive{U}}) where {U} 
+    return ss.parent.A+ss.Astar
+end
+
+function Base.sum(ss::Naive{U}) where {U} 
+    return ss.A
+end
+
+function Base.sum(ss::ChanLewis{U}) where {U} 
+    return ss.S
 end
 
 function lastMeasure(::Type{T}, ss::Ling{U})::SimulationMeasure{T} where {T,U}
@@ -238,6 +284,7 @@ end
 function lastMeasure(::Type{T}, ss::Union{Kahan,Klein})::SimulationMeasure{T} where {T}
     return lastMeasure(T, ss.parent)
 end
+
 function lastMeasure(::Type{T}, ss::ChanLewis)::SimulationMeasure{T} where {T}
     return SimulationMeasure(ss.counter, convert(T, ss.A), convert(T, ss.Q / ss.counter))
 end
@@ -249,7 +296,7 @@ function Base.reset(ss::ChanLewis{T}) where {T}
     ss.S = zero(T)
 end
 
-function Base.reset(s::Kahan{U,T}) where {U,T}
+function Base.reset(s::Union{Kahan{U,T},Knuth{U,T}}) where {U,T}
     reset(s.parent)
     s.Qstar = zero(T)
     s.Astar = zero(T)
@@ -271,11 +318,16 @@ function Base.reset(ss::Klein{U,T}) where {U,T}
     ss.CCS2 = zero(T)
 end
 
-
-
 function lastMeasure(::Type{T}, ss::Naive{U})::SimulationMeasure{T} where {T,U}
     mean = ss.A / ss.counter
     return SimulationMeasure(ss.counter, T(mean), T(ss.Q / (ss.counter) - (mean - ss.K)^2))
+end
+
+
+function lastMeasure(::Type{T}, s::Knuth{Naive{U}})::SimulationMeasure{T} where {T,U}
+    ss = s.parent
+    mean = (ss.A+s.Astar)/ss.counter
+    return SimulationMeasure(ss.counter, convert(T, mean), convert(T, (ss.Q+s.Qstar) / ss.counter - (mean - ss.K)^2))
 end
 
 function recordValue(ss::SimulationStatistics{T}, x) where {T}
@@ -286,10 +338,19 @@ function recordValue(ss::SimulationStatistics{T}, x) where {T}
     end
 end
 
+function Base.sum(ss::Union{Klein{T,U},Kahan{T,U}}) where {T,U}
+    return Base.sum(ss.parent)
+end
+
+function Base.sum(ss::SimulationStatistics{T}) where {T}
+    return Base.sum(ss.algo)
+end
+
 function counter(ss::SimulationStatistics{T}) where {T}
     return counter(ss.algo)
 end
-function counter(ss::Union{Klein{T,U},Kahan{T,U}}) where {T,U}
+
+function counter(ss::Union{Klein{T,U},Kahan{T,U},Knuth{T,U}}) where {T,U}
     return ss.parent.counter
 end
 

@@ -8,8 +8,12 @@ function testNormalLing(z, mRef, vRef, algo, rtolM, rtolV)
     l = lastMeasure(s)
     m1 = mean(l)
     v1 = variance(l)
+    if rtolM > 0
     @test isapprox(mRef, m1, rtol = rtolM)
+    end
+    if rtolV > 0
     @test isapprox(vRef, v1, rtol = rtolV)
+    end
     return (m1 / mRef - 1.0, v1 / vRef - 1.0)
 end
 
@@ -81,29 +85,33 @@ function priceBinaryAsset(spot, strike, vol, tte)
 end
 
 struct BinaryAssetPayoff
+    tte::Float64
+    isCall::Bool
     strike::Float64
     q::Float64
     rebate::Float64
 end
-evaluate(payoff::BinaryAssetPayoff, fS) = fS > payoff.strike ? payoff.q * fS : payoff.rebate
+evaluate(payoff::BinaryAssetPayoff, fS) = (payoff.isCall && fS > payoff.strike) || (!payoff.isCall && fS < payoff.strike) ? payoff.q * fS : payoff.rebate
 struct BinaryCashPayoff
+    tte::Float64
+    isCall::Bool
     strike::Float64
     q::Float64
     rebate::Float64
 end
-evaluate(payoff::BinaryCashPayoff, fS) = fS > payoff.strike ? payoff.q : payoff.rebate
+evaluate(payoff::BinaryCashPayoff, fS) = (payoff.isCall && fS > payoff.strike) || (!payoff.isCall && fS < payoff.strike) ? payoff.q : payoff.rebate
 
 function testBinaryAsset(;
     sorted = false,
     n::Int = 1000,
     nit::Int = 10,
-    payoff = BinaryAssetPayoff(1.5, 1e6, 0.0),
+    payoff = BinaryAssetPayoff(1.0, true, 1.5, 1e6, 0.0),
 )
     spot = 1.0
     strike = payoff.strike
     vol = 0.5
-    tte = 1.0
     q = payoff.q
+    tte = payoff.tte
     println("analytic price ", priceBinaryAsset(spot, strike, vol, tte) * q)
     rng = MRG63k3a()
     dist = Distributions.Normal(0, 1.0)
@@ -215,11 +223,11 @@ function testBinaryAsset(;
         println(
             algo,
             " ",
-            StatsBase.mean(abs.(mList[algo] .- mRef)),
+            StatsBase.mean(abs.(mList[algo] ./ mRef .- 1)),
             " ",
-            StatsBase.mean(abs.(vList[algo] .- svRef)),
+            StatsBase.mean(abs.(vList[algo] ./ svRef .- 1)),
             " ",
-            StatsBase.mean(abs.(gList[algo] .- gammaRef)),
+            StatsBase.mean(abs.(gList[algo] ./ gammaRef .- 1)),
             " max ",
             maximum(abs.(mList[algo] .- mRef)),
             " ",
@@ -276,6 +284,100 @@ end
 
 end
 
+function testKlein(::Type{T};nit = 1, n = 50*1000*1000,mtol=1.0,vtol=1.0) where {T}
+    rng =MRG63k3a()
+    mList = Dict()
+    vList = Dict()
+    gList = Dict()
+    mListo = Dict()
+    vListo = Dict()
+    gListo = Dict()
+  
+    
+    algos = [
+        Naive{T}(),
+        Kahan{T}(Naive{T}()),
+        Klein{T}(Naive{T}()),
+        Knuth{T}(Naive{T}()),
+        Kahan{T}(Naive{T}(useShift = true)),
+        Klein{T}(Naive{T}(useShift = true)),
+        ChanLewis{T}(),
+        Kahan{T}(ChanLewis{T}()),
+        Ling{T}(),
+        Kahan{T}(Ling{T}()),
+        Klein{T}(Ling{T}()),
+    ]
+    for algo in algos
+        mList[algo] = Float64[]
+        vList[algo] = Float64[]
+        gList[algo] = Float64[]
+        mListo[algo] = Float64[]
+        vListo[algo] = Float64[]
+        gListo[algo] = Float64[]
+    end
+ 
+    for it=1:nit
+    z =  [convert(T, rand(rng)) for i = 1:n] 
+    zSorted = sort(z)
+    refAlgo = Klein{Float64}(Naive{Float64}())    
+    s = SimulationStatistics{Float64}(refAlgo)
+    for zi in z
+        recordValue(s, zi)
+    end
+    l = lastMeasure(s)
+    mRef = mean(l)
+    sRef = sum(s)
+    vRef = variance(l)
+    println(refAlgo, " ", sRef," ",mRef, " ", vRef)
+    for algo in algos
+        (mError, vError) = testNormalLing(z, mRef, vRef, algo, mtol, vtol)
+        println(algo, " ", sum(algo), " ", sum(algo)-sRef, " ",mError, " ", vError)
+        push!(mList[algo],mError)
+        push!(vList[algo],vError)
+        push!(gList[algo], sum(algo)-sRef)
+    end
+    reset(s)
+    for zi in zSorted
+        recordValue(s, zi)
+    end
+    l = lastMeasure(s)
+    mRef = mean(l)
+    sRef = sum(s)
+    vRef = variance(l)
+    println(refAlgo, " ordered ", sRef, " ",  mRef, " ", vRef)
+    for algo in algos
+        (mError, vError) = testNormalLing(zSorted, mRef, vRef, algo, mtol, vtol)
+        println(algo, " ordered ", sum(algo), " ", sum(algo)-sRef, " ",mError, " ", vError)
+        push!(mListo[algo],mError)
+        push!(vListo[algo],vError)
+        push!(gListo[algo], sum(algo)-sRef)
+    end
+    reset(s)
+    # zSorted = sort(z, rev=true)
+    # for zi in zSorted
+    #     recordValue(s, zi)
+    # end
+    # l = lastMeasure(s)
+    # mRef = mean(l)
+    # sRef = sum(s)
+    # vRef = variance(l)
+    # println(refAlgo, " revordered ", sRef, " ",  mRef, " ", vRef)
+    # for algo in algos
+    #     (mError, vError) = testNormalLing(zSorted, mRef, vRef, algo, mtol, vtol)
+    #     println(algo, " revordered ", sum(algo), " ", sum(algo)-sRef, " ",mError, " ", vError)
+    # end
+end
+for algo in algos
+  println(typeof(algo), " mean  errors ",StatsBase.mean(mList[algo])," ",StatsBase.mean(vList[algo]), " ",StatsBase.mean(gList[algo])," max ",maximum(mList[algo]), " ", maximum(vList[algo]))
+  println(typeof(algo), " meano errors ",StatsBase.mean(mListo[algo])," ",StatsBase.mean(vListo[algo]), " ",StatsBase.mean(gListo[algo])," max ",maximum(mListo[algo]), " ", maximum(vListo[algo]))
+    end
+end
+
+   
+@testset "Klein" begin
+    testKlein(Float64)
+end
+
 
 
 @testset "BinaryAssetUnsorted" begin
@@ -291,7 +393,7 @@ end
         sorted = false,
         n = 1000 * 10000,
         nit = 1,
-        payoff = BinaryCashPayoff(1.5, 1e6, 0.0),
+        payoff = BinaryCashPayoff(1.0,true, 1.5, 1e6, 0.0),
     )
 end
 
