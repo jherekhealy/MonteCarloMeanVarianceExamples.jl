@@ -375,7 +375,7 @@ end
 
    
 @testset "Klein" begin
-    testKlein(Float64)
+    testKlein(Float32)
 end
 
 
