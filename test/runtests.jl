@@ -433,7 +433,7 @@ end
     #plot!(abs.(mListo[algos[3]]), seriestype=:scatter, label="Klein ordered")
     #using StatPlots
     #groupedbar([ abs.(mList[algos[2]])  abs.(mList[algos[3]]) ], bar_position = :dodge, xticks=(1:10, 1:10), labels=["Kahan" "Klein"], xlab="Random sequence", ylab="Absolute Error")
-
+    #groupedbar([ abs.(mList[algos[3]])  abs.(mListo[algos[3]]) ], bar_position = :dodge, xticks=(1:10, 1:10), labels=["Klein" "Klein Ordered"], xlab="Random sequence", ylab="Absolute Error (log scale)", yscale = :log, yticks = [1e-10,1e-8,1e-6,1e-4])
 end
 
 
