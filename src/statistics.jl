@@ -12,6 +12,7 @@ export SimulationStatistics,
     mean,
     standardError
 
+
 abstract type StatisticsAlgorithm end
 
 mutable struct SimulationMeasure{T}
@@ -72,6 +73,7 @@ mutable struct Knuth{T,U} <: StatisticsAlgorithm
     Qstar::U
     Knuth{U}(parent::T) where {T,U} = new{T,U}(parent, zero(U), zero(U))
 end
+
 mutable struct Klein{T,U} <: StatisticsAlgorithm
     parent::T
     S::U
@@ -83,6 +85,7 @@ mutable struct Klein{T,U} <: StatisticsAlgorithm
     Klein{U}(parent::T) where {T,U} =
         new{T,U}(parent, zero(U), zero(U), zero(U), zero(U), zero(U), zero(U))
 end
+
 
 
 function variance(sm::SimulationMeasure{T}) where {T}
@@ -188,24 +191,19 @@ function updateStatistics(s::Knuth{Naive{T},U}, b0) where {U,T}
     ss.counter += 1
     setShiftFromFirstObservation(ss, b0)
     b = (convert(U, b0) - ss.K)^2
-    x = ss.Q + b
-    z = x -ss.Q
-    tmp1 = x - z
-    tmp2 = ss.Q - tmp1
-    tmp1 = b - z
-    ss.Q = x
-    s.Qstar += tmp2 + tmp1
-   
-  
+    ss.Q, ei = twoSum(ss.Q, b)
+    s.Qstar += ei
+
     b = convert(U, b0)
-    x = ss.A + b
-    z = x - ss.A
-    tmp1 = x - z
-    tmp2 = ss.A - tmp1
-    tmp1 = b - z
-    ss.A = x
-    s.Astar += tmp2 + tmp1
-    # => ss.A+ss.Astar
+    ss.A, ei = twoSum(ss.A, b)
+    s.Astar += ei
+end
+
+function twoSum(a::T, b::T) where {T}
+    x = a + b
+    z = x - a
+    e = (a - (x-z)) + (b-z)
+    return (x,e)
 end
 
 function updateStatistics(s::Klein{Naive{T},U}, x) where {U,T}
@@ -230,8 +228,9 @@ function updateStatistics(s::Klein{Naive{T},U}, x) where {U,T}
     cc = abs(s.CS) >= abs(c) ? (s.CS - t) + c : (c - t) + s.CS
     s.CS = t
     s.CCS += cc
-    ss.A = (s.S + s.CS + s.CCS)
+    ss.A = (s.S + s.CS + s.CCS)    
 end
+
 
 
 function Base.sum(ss::Knuth{Naive{U}}) where {U} 

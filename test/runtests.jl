@@ -9,10 +9,10 @@ function testNormalLing(z, mRef, vRef, algo, rtolM, rtolV)
     m1 = mean(l)
     v1 = variance(l)
     if rtolM > 0
-    @test isapprox(mRef, m1, rtol = rtolM)
+        @test isapprox(mRef, m1, rtol = rtolM)
     end
     if rtolV > 0
-    @test isapprox(vRef, v1, rtol = rtolV)
+        @test isapprox(vRef, v1, rtol = rtolV)
     end
     return (m1 / mRef - 1.0, v1 / vRef - 1.0)
 end
@@ -91,7 +91,9 @@ struct BinaryAssetPayoff
     q::Float64
     rebate::Float64
 end
-evaluate(payoff::BinaryAssetPayoff, fS) = (payoff.isCall && fS > payoff.strike) || (!payoff.isCall && fS < payoff.strike) ? payoff.q * fS : payoff.rebate
+evaluate(payoff::BinaryAssetPayoff, fS) =
+    (payoff.isCall && fS > payoff.strike) || (!payoff.isCall && fS < payoff.strike) ?
+    payoff.q * fS : payoff.rebate
 struct BinaryCashPayoff
     tte::Float64
     isCall::Bool
@@ -99,7 +101,9 @@ struct BinaryCashPayoff
     q::Float64
     rebate::Float64
 end
-evaluate(payoff::BinaryCashPayoff, fS) = (payoff.isCall && fS > payoff.strike) || (!payoff.isCall && fS < payoff.strike) ? payoff.q : payoff.rebate
+evaluate(payoff::BinaryCashPayoff, fS) =
+    (payoff.isCall && fS > payoff.strike) || (!payoff.isCall && fS < payoff.strike) ?
+    payoff.q : payoff.rebate
 
 function testBinaryAsset(;
     sorted = false,
@@ -284,28 +288,35 @@ end
 
 end
 
-function testKlein(::Type{T};nit = 1, n = 50*1000*1000,mtol=1.0,vtol=1.0) where {T}
-    rng =MRG63k3a()
+function testKlein(
+    ::Type{T};
+    nit = 1,
+    n = 50 * 1000 * 1000,
+    mtol = 1.0,
+    vtol = 1.0,
+    isPositive = true
+) where {T}
+    rng = MRG63k3a()
     mList = Dict()
     vList = Dict()
     gList = Dict()
     mListo = Dict()
     vListo = Dict()
     gListo = Dict()
-  
-    
+
+
     algos = [
         Naive{T}(),
         Kahan{T}(Naive{T}()),
         Klein{T}(Naive{T}()),
-        Knuth{T}(Naive{T}()),
-        Kahan{T}(Naive{T}(useShift = true)),
-        Klein{T}(Naive{T}(useShift = true)),
-        ChanLewis{T}(),
-        Kahan{T}(ChanLewis{T}()),
-        Ling{T}(),
-        Kahan{T}(Ling{T}()),
-        Klein{T}(Ling{T}()),
+        #Knuth{T}(Naive{T}()),
+        # Kahan{T}(Naive{T}(useShift = true)),
+        # Klein{T}(Naive{T}(useShift = true)),
+        # ChanLewis{T}(),
+        # Kahan{T}(ChanLewis{T}()),
+        # Ling{T}(),
+        # Kahan{T}(Ling{T}()),
+        # Klein{T}(Ling{T}()),
     ]
     for algo in algos
         mList[algo] = Float64[]
@@ -315,67 +326,114 @@ function testKlein(::Type{T};nit = 1, n = 50*1000*1000,mtol=1.0,vtol=1.0) where 
         vListo[algo] = Float64[]
         gListo[algo] = Float64[]
     end
- 
-    for it=1:nit
-    z =  [convert(T, rand(rng)) for i = 1:n] 
-    zSorted = sort(z)
-    refAlgo = Klein{Float64}(Naive{Float64}())    
-    s = SimulationStatistics{Float64}(refAlgo)
-    for zi in z
-        recordValue(s, zi)
+
+    for it = 1:nit
+        z = [convert(T, rand(rng)) for i = 1:n]
+        if !isPositive
+            @. z -= 0.5
+        end
+        zSorted = sort(z)
+        refAlgo = Klein{Float64}(Naive{Float64}())
+        s = SimulationStatistics{Float64}(refAlgo)
+        for zi in z
+            recordValue(s, zi)
+        end
+        l = lastMeasure(s)
+        mRef = mean(l)
+        sRef = sum(s)
+        vRef = variance(l)
+        println(refAlgo, " ", sRef, " ", mRef, " ", vRef)
+        for algo in algos
+            (mError, vError) = testNormalLing(z, mRef, vRef, algo, mtol, vtol)
+            println(algo, " ", sum(algo), " ", sum(algo) - sRef, " ", mError, " ", vError)
+            push!(mList[algo], mError)
+            push!(vList[algo], vError)
+            push!(gList[algo], sum(algo) - sRef)
+        end
+        reset(s)
+        for zi in zSorted
+            recordValue(s, zi)
+        end
+        l = lastMeasure(s)
+        mRef = mean(l)
+        sRef = sum(s)
+        vRef = variance(l)
+        println(refAlgo, " ordered ", sRef, " ", mRef, " ", vRef)
+        for algo in algos
+            (mError, vError) = testNormalLing(zSorted, mRef, vRef, algo, mtol, vtol)
+            println(
+                algo,
+                " ordered ",
+                sum(algo),
+                " ",
+                sum(algo) - sRef,
+                " ",
+                mError,
+                " ",
+                vError,
+            )
+            push!(mListo[algo], mError)
+            push!(vListo[algo], vError)
+            push!(gListo[algo], sum(algo) - sRef)
+        end
+        reset(s)
+        zSorted = sort(z, rev=true)
+        for zi in zSorted
+            recordValue(s, zi)
+        end
+        l = lastMeasure(s)
+        mRef = mean(l)
+        sRef = sum(s)
+        vRef = variance(l)
+        println(refAlgo, " revordered ", sRef, " ",  mRef, " ", vRef)
+        for algo in algos
+            (mError, vError) = testNormalLing(zSorted, mRef, vRef, algo, mtol, vtol)
+            println(algo, " revordered ", sum(algo), " ", sum(algo)-sRef, " ",mError, " ", vError)
+        end
     end
-    l = lastMeasure(s)
-    mRef = mean(l)
-    sRef = sum(s)
-    vRef = variance(l)
-    println(refAlgo, " ", sRef," ",mRef, " ", vRef)
     for algo in algos
-        (mError, vError) = testNormalLing(z, mRef, vRef, algo, mtol, vtol)
-        println(algo, " ", sum(algo), " ", sum(algo)-sRef, " ",mError, " ", vError)
-        push!(mList[algo],mError)
-        push!(vList[algo],vError)
-        push!(gList[algo], sum(algo)-sRef)
+        println(
+            typeof(algo),
+            " mean  errors ",
+            StatsBase.mean(abs.(mList[algo])),
+            " ",
+            StatsBase.mean(abs.(vList[algo])),
+            " ",
+            StatsBase.mean(abs.(gList[algo])),
+            " max ",
+            maximum(abs.(mList[algo])),
+            " ",
+            maximum(abs.(vList[algo])),
+        )
+        println(
+            typeof(algo),
+            " meano errors ",
+            StatsBase.mean(abs.(mListo[algo])),
+            " ",
+            StatsBase.mean(abs.(vListo[algo])),
+            " ",
+            StatsBase.mean(abs.(gListo[algo])),
+            " max ",
+            maximum(abs.(mListo[algo])),
+            " ",
+            maximum(abs.(vListo[algo])),
+        )
     end
-    reset(s)
-    for zi in zSorted
-        recordValue(s, zi)
-    end
-    l = lastMeasure(s)
-    mRef = mean(l)
-    sRef = sum(s)
-    vRef = variance(l)
-    println(refAlgo, " ordered ", sRef, " ",  mRef, " ", vRef)
-    for algo in algos
-        (mError, vError) = testNormalLing(zSorted, mRef, vRef, algo, mtol, vtol)
-        println(algo, " ordered ", sum(algo), " ", sum(algo)-sRef, " ",mError, " ", vError)
-        push!(mListo[algo],mError)
-        push!(vListo[algo],vError)
-        push!(gListo[algo], sum(algo)-sRef)
-    end
-    reset(s)
-    # zSorted = sort(z, rev=true)
-    # for zi in zSorted
-    #     recordValue(s, zi)
-    # end
-    # l = lastMeasure(s)
-    # mRef = mean(l)
-    # sRef = sum(s)
-    # vRef = variance(l)
-    # println(refAlgo, " revordered ", sRef, " ",  mRef, " ", vRef)
-    # for algo in algos
-    #     (mError, vError) = testNormalLing(zSorted, mRef, vRef, algo, mtol, vtol)
-    #     println(algo, " revordered ", sum(algo), " ", sum(algo)-sRef, " ",mError, " ", vError)
-    # end
-end
-for algo in algos
-  println(typeof(algo), " mean  errors ",StatsBase.mean(mList[algo])," ",StatsBase.mean(vList[algo]), " ",StatsBase.mean(gList[algo])," max ",maximum(mList[algo]), " ", maximum(vList[algo]))
-  println(typeof(algo), " meano errors ",StatsBase.mean(mListo[algo])," ",StatsBase.mean(vListo[algo]), " ",StatsBase.mean(gListo[algo])," max ",maximum(mListo[algo]), " ", maximum(vListo[algo]))
-    end
+    return algos, mList, vList, gList, mListo
 end
 
-   
+
 @testset "Klein" begin
     testKlein(Float32)
+    #plot(abs.(mList[algos[2]]), seriestype=:scatter, label="Kahan", xlab="Random sequence", ylab="Absolute Error")
+    #plot!(abs.(mList[algos[3]]), seriestype=:scatter, label="Klein")
+    #plot(abs.(mList[algos[2]]), seriestype=:scatter, label="Kahan")
+    #plot!(abs.(mListo[algos[2]]), seriestype=:scatter, label="Kahan ordered")
+    #plot(abs.(mList[algos[3]]), seriestype=:scatter, label="Klein")
+    #plot!(abs.(mListo[algos[3]]), seriestype=:scatter, label="Klein ordered")
+    #using StatPlots
+    #groupedbar([ abs.(mList[algos[2]])  abs.(mList[algos[3]]) ], bar_position = :dodge, xticks=(1:10, 1:10), labels=["Kahan" "Klein"], xlab="Random sequence", ylab="Absolute Error")
+
 end
 
 
@@ -393,7 +451,7 @@ end
         sorted = false,
         n = 1000 * 10000,
         nit = 1,
-        payoff = BinaryCashPayoff(1.0,true, 1.5, 1e6, 0.0),
+        payoff = BinaryCashPayoff(1.0, true, 1.5, 1e6, 0.0),
     )
 end
 
